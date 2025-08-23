@@ -5,6 +5,8 @@ import (
 	"io"
 
 	"fmt"
+
+	"github.com/devasherr/tcp-http/internal/headers"
 )
 
 var ERROR_INVALID_REQUETS_LINE = fmt.Errorf("invalid request line")
@@ -14,9 +16,10 @@ var SEPARTOR = []byte("\r\n")
 type parserState string
 
 const (
-	StateInit  parserState = "init"
-	StateDone  parserState = "done"
-	StateError parserState = "error"
+	StateInit    parserState = "init"
+	StateHeaders parserState = "headers"
+	StateDone    parserState = "done"
+	StateError   parserState = "error"
 )
 
 type RequestLine struct {
@@ -27,12 +30,14 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     *headers.Headers
 	State       parserState
 }
 
 func newRequest() *Request {
 	return &Request{
-		State: StateInit,
+		State:   StateInit,
+		Headers: headers.NewHeaders(),
 	}
 }
 
@@ -75,11 +80,12 @@ func (r *Request) parse(data []byte) (int, error) {
 
 outer:
 	for {
+		currentData := data[read:]
 		switch r.State {
 		case StateError:
 			return 0, ERROR_REQUEST_IN_ERROR_STATE
 		case StateInit:
-			rl, n, err := parseRequestLine(data[read:])
+			rl, n, err := parseRequestLine(currentData)
 			if err != nil {
 				return 0, err
 			}
@@ -91,9 +97,26 @@ outer:
 			r.RequestLine = *rl
 			read += n
 
-			r.State = StateDone
+			r.State = StateHeaders
+		case StateHeaders:
+			n, done, err := r.Headers.Parse(currentData)
+			if err != nil {
+				return 0, err
+			}
+
+			if n == 0 {
+				break outer
+			}
+
+			read += n
+
+			if done {
+				r.State = StateDone
+			}
 		case StateDone:
 			break outer
+		default:
+			panic("i don't know how we got here")
 		}
 	}
 

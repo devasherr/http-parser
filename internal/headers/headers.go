@@ -42,6 +42,7 @@ func NewHeaders() *Headers {
 
 func parseHeader(fieldLine []byte) (string, string, error) {
 	parts := bytes.SplitN(fieldLine, []byte(":"), 2)
+	fmt.Println(string(parts[0]))
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("malformed field line")
 	}
