@@ -61,6 +61,9 @@ func (h *Headers) Get(name string) string {
 }
 
 func (h *Headers) Set(name, value string) {
+	if h.Get(name) != "" {
+		value = h.Get(name) + "," + strings.ToLower(value)
+	}
 	h.headers[strings.ToLower(name)] = value
 }
 
