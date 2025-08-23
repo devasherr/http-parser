@@ -68,7 +68,12 @@ func (h *Headers) Set(name, value string) {
 	h.headers[strings.ToLower(name)] = value
 }
 
-// change the named return values
+func (h *Headers) Foreach(cb func(n, v string)) {
+	for n, v := range h.headers {
+		cb(n, v)
+	}
+}
+
 func (h *Headers) Parse(data []byte) (int, bool, error) {
 	read := 0
 	done := false
