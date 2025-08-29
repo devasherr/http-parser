@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/devasherr/tcp-http/internal/headers"
 	"github.com/devasherr/tcp-http/internal/request"
 	"github.com/devasherr/tcp-http/internal/response"
 	"github.com/devasherr/tcp-http/internal/server"
@@ -52,6 +54,14 @@ func response200() []byte {
 </html>`)
 }
 
+func toStr(data [32]byte) string {
+	res := ""
+	for _, d := range data {
+		res += fmt.Sprintf("%02x", d)
+	}
+	return res
+}
+
 func main() {
 	s, err := server.Serve(port, func(w *response.Writer, req *request.Request) {
 		h := response.GetDefaultHeaders(0)
@@ -64,9 +74,9 @@ func main() {
 		} else if req.RequestLine.RequestTarget == "/myproblem" {
 			status = response.StatusInternalServerError
 			body = response500()
-		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/stream") {
-			target := req.RequestLine.RequestTarget[len("/httpbin/stream"):]
-			resp, err := http.Get("https://httpbin.org/stream" + target)
+		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
+			target := req.RequestLine.RequestTarget[len("/httpbin/"):]
+			resp, err := http.Get("https://httpbin.org/" + target)
 			if err != nil {
 				status = response.StatusInternalServerError
 				body = response500()
@@ -74,9 +84,12 @@ func main() {
 				w.WriteStatusLine(response.StatusOk)
 				h.Delete("Content-length")
 				h.Set("transfer-encoding", "chuncked")
+				h.Set("Trailer", "X-Content-SHA256")
+				h.Set("Trailer", "X-Content-Length")
 				h.Replace("Content-type", "text/plain")
 				w.WriteHeaders(h)
 
+				fullBody := make([]byte, 0)
 				for {
 					data := make([]byte, 32)
 					n, err := resp.Body.Read(data)
@@ -84,11 +97,21 @@ func main() {
 						break
 					}
 
+					fullBody = append(fullBody, data[:n]...)
+
 					w.WriteBody([]byte(fmt.Sprintf("%x\r\n", len(data))))
 					w.WriteBody(data[:n])
 					w.WriteBody([]byte("\r\n"))
 				}
-				w.WriteBody([]byte("0\r\n\r\n"))
+				w.WriteBody([]byte("0\r\n"))
+				// bruh, trailers are headers !!
+				trailers := headers.NewHeaders()
+				hash := sha256.Sum256(fullBody)
+				trailers.Set("X-Content-SHA256", toStr(hash))
+				trailers.Set("X-Content-Length", fmt.Sprintf("%d", len(fullBody)))
+
+				w.WriteHeaders(trailers)
+				w.WriteBody([]byte("\r\n"))
 				return
 			}
 
