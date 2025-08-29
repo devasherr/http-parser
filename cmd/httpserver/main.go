@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/devasherr/tcp-http/internal/request"
@@ -62,6 +64,34 @@ func main() {
 		} else if req.RequestLine.RequestTarget == "/myproblem" {
 			status = response.StatusInternalServerError
 			body = response500()
+		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/stream") {
+			target := req.RequestLine.RequestTarget[len("/httpbin/stream"):]
+			resp, err := http.Get("https://httpbin.org/stream" + target)
+			if err != nil {
+				status = response.StatusInternalServerError
+				body = response500()
+			} else {
+				w.WriteStatusLine(response.StatusOk)
+				h.Delete("Content-length")
+				h.Set("transfer-encoding", "chuncked")
+				h.Replace("Content-type", "text/plain")
+				w.WriteHeaders(h)
+
+				for {
+					data := make([]byte, 32)
+					n, err := resp.Body.Read(data)
+					if err != nil {
+						break
+					}
+
+					w.WriteBody([]byte(fmt.Sprintf("%x\r\n", len(data))))
+					w.WriteBody(data[:n])
+					w.WriteBody([]byte("\r\n"))
+				}
+				w.WriteBody([]byte("0\r\n\r\n"))
+				return
+			}
+
 		}
 
 		h.Replace("Content-length", fmt.Sprintf("%d", len(body)))
