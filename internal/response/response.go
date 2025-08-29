@@ -9,6 +9,14 @@ import (
 
 type Response struct{}
 
+type Writer struct {
+	writer io.Writer
+}
+
+func NewWriter(writer io.Writer) *Writer {
+	return &Writer{writer: writer}
+}
+
 type StatusCode int
 
 const (
@@ -26,23 +34,18 @@ func GetDefaultHeaders(contentLen int) *headers.Headers {
 	return h
 }
 
-func WriteHeaders(w io.Writer, headers *headers.Headers) error {
-	var err error = nil
+func (w *Writer) WriteHeaders(headers *headers.Headers) error {
 	h := []byte{}
 	headers.Foreach(func(n, v string) {
-		if err != nil {
-			return
-		}
-
 		h = fmt.Appendf(h, "%s: %s\r\n", n, v)
 	})
 
 	h = fmt.Append(h, "\r\n")
-	_, err = w.Write(h)
+	_, err := w.writer.Write(h)
 	return err
 }
 
-func WriteStatusLine(w io.Writer, statStatusCode StatusCode) error {
+func (w *Writer) WriteStatusLine(statStatusCode StatusCode) error {
 	statusLine := []byte{}
 	switch statStatusCode {
 	case StatusOk:
@@ -55,6 +58,12 @@ func WriteStatusLine(w io.Writer, statStatusCode StatusCode) error {
 		return fmt.Errorf("unknown error code")
 	}
 
-	_, err := w.Write(statusLine)
+	_, err := w.writer.Write(statusLine)
 	return err
+}
+
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	// check for error maybe ??
+	return n, err
 }
